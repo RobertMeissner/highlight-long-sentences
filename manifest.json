@@ -1,0 +1,11 @@
+{
+  "id": "highlight-long-text",
+  "name": "Highlight Long Text",
+  "version": "1.0.0",
+  "description": "Highlights text that exceeds a specified length in notes.",
+  "author": "Robert Meissner",
+  "main": "main.ts",
+  "minAppVersion": "0.12.0",
+  "js": "dist/main.js",
+  "css": "styles.css"
+}

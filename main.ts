@@ -4,10 +4,12 @@ import { StateEffect, StateField } from '@codemirror/state';
 
 interface MyPluginSettings {
     maxWords: number;
+    highlightColor: string;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
     maxWords: 10,
+    highlightColor: 'rgba(255, 182, 193, 0.5)', // Default light pink color
 };
 
 class HighlightLongTextSettingTab extends PluginSettingTab {
@@ -41,10 +43,26 @@ class HighlightLongTextSettingTab extends PluginSettingTab {
                     console.log('Setting updated to maxWords:', newValue);
                 })
             );
+
+        new Setting(containerEl)
+            .setName('Highlight Color')
+            .setDesc('Set the background color for highlighted sentences')
+            .addColorPicker((colorPicker) =>
+                colorPicker.setValue(this.plugin.settings.highlightColor).onChange(async (value) => {
+                    this.plugin.settings.highlightColor = value;
+                    await this.plugin.saveSettings();
+                    const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+                    if (activeView) {
+                        await this.plugin.highlightView(activeView);
+                    }
+                    console.log('Setting updated to highlightColor:', value);
+                })
+            );
     }
 }
 
-const longSentenceEffect = StateEffect.define<{ from: number; to: number }>({});
+const addHighlightEffect = StateEffect.define<{ from: number; to: number }>({});
+const clearHighlightsEffect = StateEffect.define<void>({});
 
 const longSentenceField = StateField.define<DecorationSet>({
     create() {
@@ -54,19 +72,19 @@ const longSentenceField = StateField.define<DecorationSet>({
         decorations = decorations.map(transaction.changes);
 
         for (let effect of transaction.effects) {
-            if (effect.is(longSentenceEffect)) {
+            if (effect.is(clearHighlightsEffect)) {
+                decorations = Decoration.none;
+            }
+            if (effect.is(addHighlightEffect)) {
                 const { from, to } = effect.value;
                 const deco = Decoration.mark({
                     class: 'long-sentence-highlight',
                 }).range(from, to);
-                console.log(`Creating decoration from ${from} to ${to}.`);
-
                 decorations = decorations.update({
                     add: [deco],
                 });
             }
         }
-
         return decorations;
     },
     provide: (field) => EditorView.decorations.from(field),
@@ -116,8 +134,9 @@ export default class HighlightLongTextPlugin extends Plugin {
             return;
         }
 
+        this.applyCustomCSS();
+
         const content = cm6Editor.state.doc.toString();
-        console.log('Document content loaded:', content);
         this.highlightLongSentences(cm6Editor);
     }
 
@@ -127,27 +146,25 @@ export default class HighlightLongTextPlugin extends Plugin {
 
         console.log('Sentences to highlight:', sentences);
 
-        const effects = [];
+        const effects: StateEffect<any>[] = [clearHighlightsEffect.of(undefined)];
 
-        let pos = 0;
-        for (const line of cm6Editor.state.doc.toString().split('\n')) {
-            for (const sentence of sentences) {
-                const startIndex = line.indexOf(sentence);
-                if (startIndex !== -1) {
-                    const from = pos + startIndex;
-                    const to = from + sentence.length;
-                    effects.push(longSentenceEffect.of({ from, to }));
-                    console.log(`Highlighting from ${from} to ${to}: ${sentence}`);
-                }
+        let startIndex = 0;
+        for (const sentence of sentences) {
+            startIndex = content.indexOf(sentence, startIndex);
+            if (startIndex !== -1) {
+                const from = startIndex;
+                const to = from + sentence.length;
+                effects.push(addHighlightEffect.of({ from, to }));
+                console.log(`Highlighting sentence from ${from} to ${to}: ${sentence}`);
+                startIndex = to;
+            } else {
+                console.log(`Could not find sentence: ${sentence}`);
             }
-            pos += line.length + 1;
         }
 
-        if (effects.length > 0) {
+        if (effects.length > 1) {
             console.log('Dispatching effects:', effects);
-            cm6Editor.dispatch({
-                effects,
-            });
+            cm6Editor.dispatch({ effects });
         } else {
             console.log('No effects to dispatch.');
         }
@@ -156,6 +173,16 @@ export default class HighlightLongTextPlugin extends Plugin {
     getLongSentences(content: string): string[] {
         const sentences = content.split(/(?<=[.!?])\s+/);
         return sentences.filter((sentence) => sentence.split(/\s+/).length > this.settings.maxWords);
+    }
+
+    applyCustomCSS() {
+        const style = document.createElement('style');
+        style.textContent = `
+            .cm-line .long-sentence-highlight {
+                background-color: ${this.settings.highlightColor};
+            }
+        `;
+        document.head.append(style);
     }
 
     async loadSettings(): Promise<MyPluginSettings> {

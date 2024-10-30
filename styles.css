@@ -1,3 +1,3 @@
-.highlight-long-sentence {
-  background-color: yellow; /* Change this to your preferred highlight color */
+.cm-line .long-sentence-highlight {
+  background-color: rgba(255, 182, 193, 0.5); /* Light pink highlight */
 }

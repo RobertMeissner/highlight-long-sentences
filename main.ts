@@ -1,5 +1,6 @@
 import { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, App } from 'obsidian';
-import { EditorView } from '@codemirror/view';
+import { EditorView, Decoration, DecorationSet } from '@codemirror/view';
+import { StateEffect, StateField } from '@codemirror/state';
 
 interface MyPluginSettings {
     maxWords: number;
@@ -43,6 +44,34 @@ class HighlightLongTextSettingTab extends PluginSettingTab {
     }
 }
 
+const longSentenceEffect = StateEffect.define<{ from: number; to: number }>({});
+
+const longSentenceField = StateField.define<DecorationSet>({
+    create() {
+        return Decoration.none;
+    },
+    update(decorations, transaction) {
+        decorations = decorations.map(transaction.changes);
+
+        for (let effect of transaction.effects) {
+            if (effect.is(longSentenceEffect)) {
+                const { from, to } = effect.value;
+                const deco = Decoration.mark({
+                    class: 'long-sentence-highlight',
+                }).range(from, to);
+                console.log(`Creating decoration from ${from} to ${to}.`);
+
+                decorations = decorations.update({
+                    add: [deco],
+                });
+            }
+        }
+
+        return decorations;
+    },
+    provide: (field) => EditorView.decorations.from(field),
+});
+
 export default class HighlightLongTextPlugin extends Plugin {
     settings: MyPluginSettings = DEFAULT_SETTINGS;
 
@@ -58,8 +87,14 @@ export default class HighlightLongTextPlugin extends Plugin {
 
         console.log('HighlightLongTextPlugin loaded');
 
+        this.registerEditorExtension([longSentenceField]);
+
         this.app.workspace.on('file-open', this.highlightCurrentView.bind(this));
         this.app.workspace.on('layout-change', this.highlightCurrentView.bind(this));
+    }
+
+    onunload() {
+        console.log('HighlightLongTextPlugin unloaded');
     }
 
     async highlightCurrentView() {
@@ -67,8 +102,8 @@ export default class HighlightLongTextPlugin extends Plugin {
         if (activeView) {
             await this.highlightView(activeView);
         } else {
-            new Notice('No active markdown file to log long sentences.');
-            console.log('No active markdown file to log long sentences.');
+            new Notice('No active markdown file to highlight long sentences.');
+            console.log('No active markdown file to highlight long sentences.');
         }
     }
 
@@ -81,26 +116,41 @@ export default class HighlightLongTextPlugin extends Plugin {
             return;
         }
 
-        this.logLongSentences(cm6Editor);
+        const content = cm6Editor.state.doc.toString();
+        console.log('Document content loaded:', content);
+        this.highlightLongSentences(cm6Editor);
     }
 
-    logLongSentences(cm6Editor: EditorView) {
+    highlightLongSentences(cm6Editor: EditorView) {
         const content = cm6Editor.state.doc.toString();
         const sentences = this.getLongSentences(content);
 
+        console.log('Sentences to highlight:', sentences);
 
-        let startIndex = 0;
-        const lines = content.split('\n');
+        const effects = [];
 
-        lines.forEach((line: string, lineNumber: number) => {
-            sentences.forEach((sentence) => {
-                const sentenceStart = line.indexOf(sentence);
-                if (sentenceStart !== -1) {
-                    console.log(`Line: ${lineNumber + 1}, Start index: ${sentenceStart}: ${sentence}`);
+        let pos = 0;
+        for (const line of cm6Editor.state.doc.toString().split('\n')) {
+            for (const sentence of sentences) {
+                const startIndex = line.indexOf(sentence);
+                if (startIndex !== -1) {
+                    const from = pos + startIndex;
+                    const to = from + sentence.length;
+                    effects.push(longSentenceEffect.of({ from, to }));
+                    console.log(`Highlighting from ${from} to ${to}: ${sentence}`);
                 }
+            }
+            pos += line.length + 1;
+        }
+
+        if (effects.length > 0) {
+            console.log('Dispatching effects:', effects);
+            cm6Editor.dispatch({
+                effects,
             });
-            startIndex += line.length + 1;
-        });
+        } else {
+            console.log('No effects to dispatch.');
+        }
     }
 
     getLongSentences(content: string): string[] {

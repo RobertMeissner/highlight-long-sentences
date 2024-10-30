@@ -171,9 +171,12 @@ export default class HighlightLongTextPlugin extends Plugin {
     }
 
     getLongSentences(content: string): string[] {
-        const sentences = content.split(/(?<=[.!?])\s+/);
-        return sentences.filter((sentence) => sentence.split(/\s+/).length > this.settings.maxWords);
-    }
+    // Split content by sentences and also consider Markdown new lines and paragraph breaks
+    const sentenceDelimiterRegex = /(?<=[.!?])\s+|(?=\n\n)|(?=\n\s*\n)|(?<!\n)\n(?!\n)/;
+    const sentences = content.split(sentenceDelimiterRegex);
+
+    return sentences.filter((sentence) => sentence.split(/\s+/).length > this.settings.maxWords);
+}
 
     applyCustomCSS() {
         const style = document.createElement('style');

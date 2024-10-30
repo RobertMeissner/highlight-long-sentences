@@ -1,7 +1,7 @@
 {
-  "name": "highlight-long-text",
-  "version": "1.0.0",
-  "description": "",
+  "name": "highlight-long-sentences",
+  "version": "0.0.1",
+  "description": "Obsidian plugin to highlight long sentences.",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",

@@ -1,6 +1,6 @@
-import { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, App } from 'obsidian';
-import { EditorView, Decoration, DecorationSet } from '@codemirror/view';
-import { StateEffect, StateField } from '@codemirror/state';
+import {Plugin, PluginSettingTab, Setting, MarkdownView, Notice, App} from 'obsidian';
+import {EditorView, Decoration, DecorationSet} from '@codemirror/view';
+import {StateEffect, StateField} from '@codemirror/state';
 
 interface MyPluginSettings {
     maxWords: number;
@@ -21,10 +21,10 @@ class HighlightLongTextSettingTab extends PluginSettingTab {
     }
 
     display() {
-        const { containerEl } = this;
+        const {containerEl} = this;
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'Highlight Long Sentences Settings' });
+        containerEl.createEl('h2', {text: 'Highlight Long Sentences Settings'});
 
         new Setting(containerEl)
             .setName('Maximum Words')
@@ -40,7 +40,6 @@ class HighlightLongTextSettingTab extends PluginSettingTab {
                             await this.plugin.highlightView(activeView);
                         }
                     }
-                    console.log('Setting updated to maxWords:', newValue);
                 })
             );
 
@@ -55,7 +54,6 @@ class HighlightLongTextSettingTab extends PluginSettingTab {
                     if (activeView) {
                         await this.plugin.highlightView(activeView);
                     }
-                    console.log('Setting updated to highlightColor:', value);
                 })
             );
     }
@@ -76,7 +74,7 @@ const longSentenceField = StateField.define<DecorationSet>({
                 decorations = Decoration.none;
             }
             if (effect.is(addHighlightEffect)) {
-                const { from, to } = effect.value;
+                const {from, to} = effect.value;
                 const deco = Decoration.mark({
                     class: 'long-sentence-highlight',
                 }).range(from, to);
@@ -103,8 +101,6 @@ export default class HighlightLongTextPlugin extends Plugin {
             callback: () => this.highlightCurrentView(),
         });
 
-        console.log('HighlightLongTextPlugin loaded');
-
         this.registerEditorExtension([longSentenceField]);
 
         this.app.workspace.on('file-open', this.highlightCurrentView.bind(this));
@@ -120,7 +116,6 @@ export default class HighlightLongTextPlugin extends Plugin {
         if (activeView) {
             await this.highlightView(activeView);
         } else {
-            new Notice('No active markdown file to highlight long sentences.');
             console.log('No active markdown file to highlight long sentences.');
         }
     }
@@ -144,7 +139,6 @@ export default class HighlightLongTextPlugin extends Plugin {
         const content = cm6Editor.state.doc.toString();
         const sentences = this.getLongSentences(content);
 
-        console.log('Sentences to highlight:', sentences);
 
         const effects: StateEffect<any>[] = [clearHighlightsEffect.of(undefined)];
 
@@ -154,8 +148,7 @@ export default class HighlightLongTextPlugin extends Plugin {
             if (startIndex !== -1) {
                 const from = startIndex;
                 const to = from + sentence.length;
-                effects.push(addHighlightEffect.of({ from, to }));
-                console.log(`Highlighting sentence from ${from} to ${to}: ${sentence}`);
+                effects.push(addHighlightEffect.of({from, to}));
                 startIndex = to;
             } else {
                 console.log(`Could not find sentence: ${sentence}`);
@@ -163,20 +156,17 @@ export default class HighlightLongTextPlugin extends Plugin {
         }
 
         if (effects.length > 1) {
-            console.log('Dispatching effects:', effects);
-            cm6Editor.dispatch({ effects });
-        } else {
-            console.log('No effects to dispatch.');
+            cm6Editor.dispatch({effects});
         }
     }
 
     getLongSentences(content: string): string[] {
-    // Split content by sentences and also consider Markdown new lines and paragraph breaks
-    const sentenceDelimiterRegex = /(?<=[.!?])\s+|(?=\n\n)|(?=\n\s*\n)|(?<!\n)\n(?!\n)/;
-    const sentences = content.split(sentenceDelimiterRegex);
 
-    return sentences.filter((sentence) => sentence.split(/\s+/).length > this.settings.maxWords);
-}
+        const sentenceDelimiterRegex = /(?<=[.!?])\s+|(?=\n\n)|(?=\n\s*\n)|(?<!\n)\n(?!\n)/;
+        const sentences = content.split(sentenceDelimiterRegex);
+
+        return sentences.filter((sentence) => sentence.split(/\s+/).length > this.settings.maxWords);
+    }
 
     applyCustomCSS() {
         const style = document.createElement('style');

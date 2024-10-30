@@ -1,80 +1,119 @@
-import { Plugin, PluginSettingTab, Setting, App, MarkdownView, Notice } from 'obsidian';
+import { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, App } from 'obsidian';
+import { EditorView } from '@codemirror/view';
 
 interface MyPluginSettings {
-    maxLength: number;
+    maxWords: number;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
-    maxLength: 100,
+    maxWords: 10,
 };
 
-export default class HighlightLongTextPlugin extends Plugin {
-    settings: MyPluginSettings = DEFAULT_SETTINGS; // Initialize this without assigning a value in the constructor
-
-    async onload() {
-        this.settings = await this.loadSettings();
-        this.addSettingTab(new HighlightLongTextSettingTab(this.app, this));
-
-        this.addCommand({
-            id: 'highlight-long-text',
-            name: 'Highlight Long Text',
-            callback: () => this.highlightText(),
-        });
-    }
-
-    async highlightText() {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile) {
-            const content = await this.app.vault.read(activeFile);
-            const highlightedContent = this.highlightLongText(content);
-            await this.app.vault.modify(activeFile, highlightedContent);
-            new Notice("Highlighted text longer than " + this.settings.maxLength + " characters.");
-        }
-    }
-
-    highlightLongText(content: string): string {
-        const lines = content.split('\n');
-        return lines.map(line => {
-            return line.length > this.settings.maxLength ? `==${line}==` : line; // Highlight with '==' markers
-        }).join('\n');
-    }
-
-    async loadSettings() {
-        const data = await this.loadData();
-        return { ...DEFAULT_SETTINGS, ...(data as MyPluginSettings) };
-    }
-
-    async saveSettings() {
-        await this.saveData(this.settings);
-    }
-}
-
 class HighlightLongTextSettingTab extends PluginSettingTab {
-    private plugin: HighlightLongTextPlugin;
+    plugin: HighlightLongTextPlugin;
 
     constructor(app: App, plugin: HighlightLongTextPlugin) {
-        super(app, plugin); // Ensure the super call is correct
+        super(app, plugin);
         this.plugin = plugin;
     }
 
     display() {
-        const { containerEl } = this; // This is now valid as it's defined in PluginSettingTab
-
+        const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: 'Highlight Long Text Settings' });
+
+        containerEl.createEl('h2', { text: 'Highlight Long Sentences Settings' });
 
         new Setting(containerEl)
-            .setName('Maximum Length')
-            .setDesc('Set the maximum character length for highlighting')
-            .addText(text =>
-                text.setValue(this.plugin.settings.maxLength.toString())
-                .onChange(async (value) => {
+            .setName('Maximum Words')
+            .setDesc('Set the maximum word count for highlighting sentences')
+            .addText((text) =>
+                text.setValue(String(this.plugin.settings.maxWords)).onChange(async (value) => {
                     const newValue = parseInt(value);
                     if (!isNaN(newValue) && newValue > 0) {
-                        this.plugin.settings.maxLength = newValue; // Accessible because `plugin` is of the correct type
+                        this.plugin.settings.maxWords = newValue;
                         await this.plugin.saveSettings();
+                        const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+                        if (activeView) {
+                            await this.plugin.highlightView(activeView);
+                        }
                     }
+                    console.log('Setting updated to maxWords:', newValue);
                 })
             );
+    }
+}
+
+export default class HighlightLongTextPlugin extends Plugin {
+    settings: MyPluginSettings = DEFAULT_SETTINGS;
+
+    async onload() {
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadSettings());
+        this.addSettingTab(new HighlightLongTextSettingTab(this.app, this));
+
+        this.addCommand({
+            id: 'highlight-long-sentences',
+            name: 'Highlight Long Sentences',
+            callback: () => this.highlightCurrentView(),
+        });
+
+        console.log('HighlightLongTextPlugin loaded');
+
+        this.app.workspace.on('file-open', this.highlightCurrentView.bind(this));
+        this.app.workspace.on('layout-change', this.highlightCurrentView.bind(this));
+    }
+
+    async highlightCurrentView() {
+        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (activeView) {
+            await this.highlightView(activeView);
+        } else {
+            new Notice('No active markdown file to log long sentences.');
+            console.log('No active markdown file to log long sentences.');
+        }
+    }
+
+    async highlightView(view: MarkdownView) {
+        const cm6Editor: EditorView = (view.editor as any).cm as EditorView;
+
+        if (!cm6Editor) {
+            new Notice('Failed to access the CodeMirror editor.');
+            console.log('Failed to access the CodeMirror editor.');
+            return;
+        }
+
+        this.logLongSentences(cm6Editor);
+    }
+
+    logLongSentences(cm6Editor: EditorView) {
+        const content = cm6Editor.state.doc.toString();
+        const sentences = this.getLongSentences(content);
+
+
+        let startIndex = 0;
+        const lines = content.split('\n');
+
+        lines.forEach((line: string, lineNumber: number) => {
+            sentences.forEach((sentence) => {
+                const sentenceStart = line.indexOf(sentence);
+                if (sentenceStart !== -1) {
+                    console.log(`Line: ${lineNumber + 1}, Start index: ${sentenceStart}: ${sentence}`);
+                }
+            });
+            startIndex += line.length + 1;
+        });
+    }
+
+    getLongSentences(content: string): string[] {
+        const sentences = content.split(/(?<=[.!?])\s+/);
+        return sentences.filter((sentence) => sentence.split(/\s+/).length > this.settings.maxWords);
+    }
+
+    async loadSettings(): Promise<MyPluginSettings> {
+        const data = await this.loadData();
+        return Object.assign({}, DEFAULT_SETTINGS, data);
+    }
+
+    async saveSettings() {
+        await this.saveData(this.settings);
     }
 }
